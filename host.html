@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Host Live Quiz</title><link rel="stylesheet" href="style.css">
+</head><body><main><h1>🎯 Host a Live Quiz</h1><div id="app" class="mute">Loading…</div></main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+const app=document.getElementById('app'),LIMIT=20000,COL=['▲','◆','●','■'];
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+let uid,pin=null,Q=[],K=[],S=null,P={},A={},SC={};
+let draft;try{draft=JSON.parse(localStorage.getItem('quizDraft'))}catch(e){}
+draft=draft||{title:'My Quiz',qs:[{q:'',o:['','','',''],c:0}]};
+const saveDraft=()=>localStorage.setItem('quizDraft',JSON.stringify(draft));
+const ref=p=>db.ref('games/'+pin+'/'+p);
+
+firebase.auth().signInAnonymously().then(u=>{uid=u.user.uid;resume()})
+  .catch(e=>app.innerHTML='<div class="card">Sign-in failed: '+esc(e.message)+'<br>Check firebase-config.js and that Anonymous sign-in is enabled.</div>');
+
+async function resume(){
+  const p=localStorage.getItem('hostPin');
+  if(p){
+    try{
+      const m=await db.ref('games/'+p+'/meta').once('value');
+      if(m.exists()&&m.val().hostUid===uid){pin=p;return attach()}
+    }catch(e){}
+    localStorage.removeItem('hostPin');
+  }
+  editor();
+}
+/* ---------- editor ---------- */
+function editor(){
+  let h='<div class="card"><h2>Create your quiz</h2><input type="text" placeholder="Quiz title" value="'+esc(draft.title)+'" oninput="draft.title=this.value;saveDraft()">';
+  draft.qs.forEach((d,i)=>{
+    h+='<div class="qedit"><div class="row" style="justify-content:space-between"><b>Question '+(i+1)+'</b><button class="ghost" onclick="delQ('+i+')">Remove</button></div>'
+     +'<input type="text" placeholder="Question" value="'+esc(d.q)+'" oninput="draft.qs['+i+'].q=this.value;saveDraft()">';
+    d.o.forEach((x,j)=>{h+='<label><input type="radio" name="c'+i+'" '+(d.c===j?'checked':'')+' onchange="draft.qs['+i+'].c='+j+';saveDraft()"><input type="text" placeholder="Option '+(j+1)+' (leave empty to skip)" value="'+esc(x)+'" oninput="draft.qs['+i+'].o['+j+']=this.value;saveDraft()"></label>'});
+    h+='</div>';
+  });
+  h+='<div class="row" style="margin-top:14px"><button class="ghost" onclick="addQ()">+ Add question</button><button onclick="create()">Create game →</button></div></div>';
+  app.innerHTML=h;
+}
+function addQ(){draft.qs.push({q:'',o:['','','',''],c:0});saveDraft();editor()}
+function delQ(i){if(draft.qs.length>1){draft.qs.splice(i,1);saveDraft();editor()}}
+async function create(){
+  const qs=[],key=[];
+  for(const d of draft.qs){
+    if(!d.q.trim())continue;
+    const opts=d.o.map((x,j)=>({x:x.trim(),j})).filter(o=>o.x);
+    const c=opts.findIndex(o=>o.j===d.c);
+    if(opts.length<2||c<0){alert('Each question needs 2+ options, and the correct option must not be empty:\n'+d.q);return}
+    qs.push({q:d.q.trim(),o:opts.map(o=>o.x)});key.push(c);
+  }
+  if(!qs.length){alert('Add at least one question.');return}
+  for(let tries=0;tries<5;tries++){
+    const p=String(Math.floor(100000+Math.random()*900000));
+    try{
+      const m=await db.ref('games/'+p+'/meta').once('value');
+      if(m.exists())continue;
+      await db.ref('games/'+p).update({
+        meta:{hostUid:uid,title:draft.title||'Quiz',created:Date.now()},
+        questions:qs,key:key,state:{phase:'lobby',idx:-1,startedAt:0,correct:-1}
+      });
+      pin=p;localStorage.setItem('hostPin',p);return attach();
+    }catch(e){alert('Could not create game: '+e.message+'\nCheck the database rules were published.');return}
+  }
+}
+/* ---------- live game ---------- */
+async function attach(){
+  const [q,k]=await Promise.all([ref('questions').once('value'),ref('key').once('value')]);
+  Q=q.val()||[];K=k.val()||[];
+  ref('state').on('value',s=>{S=s.val();render()});
+  ref('players').on('value',s=>{P=s.val()||{};render()});
+  ref('answers').on('value',s=>{A=s.val()||{};render()});
+  ref('scores').on('value',s=>{SC=s.val()||{};render()});
+}
+const upd=patch=>ref('state').update(patch);
+function next(){
+  const i=S.idx+1;
+  if(i>=Q.length)upd({phase:'final'});else upd({phase:'question',idx:i,startedAt:Date.now(),correct:-1});
+}
+function reveal(){
+  const sc={};
+  Object.keys(P).forEach(id=>{
+    let t=0;const a=A[id]||{};
+    K.forEach((c,i)=>{const r=a['q'+i];if(r&&r.c===c)t+=500+Math.round(500*Math.max(0,1-r.t/LIMIT))});
+    sc[id]=t;
+  });
+  db.ref('games/'+pin).update({scores:sc,'state/phase':'results','state/correct':K[S.idx]});
+}
+async function resetAll(){
+  if(!confirm('Delete this game and all players?'))return;
+  await db.ref('games/'+pin).remove();
+  ['state','players','answers','scores'].forEach(p=>ref(p).off());
+  localStorage.removeItem('hostPin');pin=null;S=null;P={};A={};SC={};editor();
+}
+function cnt(i,j){return Object.keys(A).filter(id=>A[id]['q'+i]&&(j==null||A[id]['q'+i].c===j)).length}
+function lb(n){
+  const r=Object.keys(P).map(id=>({name:P[id].name,s:SC[id]||0})).sort((a,b)=>b.s-a.s).slice(0,n);
+  return r.length?'<ol class="lb">'+r.map((p,i)=>'<li><span>'+(i+1)+'. '+esc(p.name)+'</span><b>'+p.s+'</b></li>').join('')+'</ol>':'<p class="mute">No players yet.</p>';
+}
+function render(){
+  if(!pin||!S)return;
+  const np=Object.keys(P).length,q=Q[S.idx];let h='',btn='';
+  if(S.phase==='lobby')btn='<button class="full" onclick="next()">Start quiz ('+np+' joined)</button>';
+  else if(S.phase==='question')btn='<button class="full" onclick="reveal()">Show results ('+cnt(S.idx)+'/'+np+' answered)</button>';
+  else if(S.phase==='results')btn='<button class="full" onclick="next()">'+(S.idx+1>=Q.length?'Final leaderboard':'Next question')+'</button>';
+  h+='<div class="card"><span class="pill">Host controls</span> <span class="pill">'+np+' players</span><div style="margin-top:10px">'+btn+'</div><button class="ghost full" style="margin-top:8px" onclick="resetAll()">End &amp; delete game</button></div>';
+  if(S.phase==='lobby'){
+    const url=new URL('index.html?pin='+pin,location.href).href;
+    h+='<div class="card"><p class="mute" style="text-align:center">Players go to the site and enter PIN</p><div class="pin">'+pin+'</div><div id="qr"></div><p class="mute" style="text-align:center;word-break:break-all">'+esc(url)+'</p></div>'
+     +'<div class="card"><h2>Players</h2><div class="row">'+Object.keys(P).map(k=>'<span class="pill">'+esc(P[k].name)+'</span>').join('')+'</div></div>';
+    app.innerHTML=h;
+    if(window.QRCode)new QRCode(document.getElementById('qr'),{text:url,width:180,height:180});
+    return;
+  }
+  if(S.phase==='question'&&q){
+    h+='<div class="card"><span class="pill">Question '+(S.idx+1)+' / '+Q.length+'</span> <span class="pill" id="tm"></span><h2 style="margin-top:10px">'+esc(q.q)+'</h2><div class="opts">'
+     +q.o.map((x,j)=>'<div class="opt o'+j+'" style="min-height:60px">'+COL[j]+' '+esc(x)+'</div>').join('')+'</div></div>';
+  }else if(S.phase==='results'&&q){
+    h+='<div class="card"><h2>'+esc(q.q)+'</h2>'+q.o.map((x,j)=>{
+      const n=cnt(S.idx,j),pct=np?Math.round(100*n/np):0;
+      return '<div style="margin:10px 0;'+(j===S.correct?'':'opacity:.6')+'"><div class="row" style="justify-content:space-between"><span>'+(j===S.correct?'✅ ':'')+COL[j]+' '+esc(x)+'</span><b>'+n+'</b></div><div class="bar"><i style="width:'+pct+'%;background:var(--'+'abcd'[j]+')"></i></div></div>';
+    }).join('')+'</div><div class="card"><h2>Top players</h2>'+lb(5)+'</div>';
+  }else if(S.phase==='final')h+='<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(10)+'</div>';
+  app.innerHTML=h;
+}
+setInterval(()=>{const el=document.getElementById('tm');if(el&&S&&S.phase==='question')el.textContent='⏱ '+Math.max(0,Math.ceil((LIMIT-(Date.now()-S.startedAt))/1000))+'s'},500);
+</script></body></html>
