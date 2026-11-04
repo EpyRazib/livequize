@@ -85,7 +85,7 @@ async function attach(){
 const upd=patch=>ref('state').update(patch);
 function next(){
   const i=S.idx+1;
-  if(i>=Q.length)upd({phase:'final'});else upd({phase:'question',idx:i,startedAt:Date.now(),correct:-1});
+  if(i>=Q.length)upd({phase:'final',key:K});else upd({phase:'question',idx:i,startedAt:Date.now(),correct:-1});
 }
 function reveal(){
   const sc={};
@@ -98,7 +98,7 @@ function reveal(){
 }
 async function resetAll(){
   if(!confirm('Delete this game and all players?'))return;
-  await db.ref('games/'+pin).remove();
+  try{await db.ref('games/'+pin).remove()}catch(e){alert('Could not delete: '+e.message+'\nPublish the latest database.rules.json in Firebase (Realtime Database > Rules).');return}
   ['state','players','answers','scores'].forEach(p=>ref(p).off());
   localStorage.removeItem('hostPin');pin=null;S=null;P={};A={};SC={};editor();
 }
@@ -106,6 +106,24 @@ function cnt(i,j){return Object.keys(A).filter(id=>A[id]['q'+i]&&(j==null||A[id]
 function lb(n){
   const r=Object.keys(P).map(id=>({name:P[id].name,s:SC[id]||0})).sort((a,b)=>b.s-a.s).slice(0,n);
   return r.length?'<ol class="lb">'+r.map((p,i)=>'<li><span>'+(i+1)+'. '+esc(p.name)+'</span><b>'+p.s+'</b></li>').join('')+'</ol>':'<p class="mute">No players yet.</p>';
+}
+
+function answerList(id){
+  const a=A[id]||{};
+  return Q.map((q,i)=>{const x=a['q'+i],ok=x&&x.c===K[i];
+    return '<div style="margin:8px 0"><b>Q'+(i+1)+'.</b> '+esc(q.q)+'<br>'+(x?(ok?'✅ ':'❌ ')+esc(q.o[x.c])+(ok?'':' <span class="mute">· correct: '+esc(q.o[K[i]])+'</span>'):'⏱ no answer <span class="mute">· correct: '+esc(q.o[K[i]])+'</span>')+'</div>'}).join('');
+}
+function finalHtml(){
+  const rows=Object.keys(P).map(id=>({id,name:P[id].name,s:SC[id]||0})).sort((a,b)=>b.s-a.s);
+  return '<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(100)+'<button class="full" onclick="csv()">⬇ Download results (CSV)</button></div>'
+   +'<div class="card"><h2>Answers by player</h2>'+(rows.map((p,i)=>'<details style="margin:6px 0"><summary><b>'+(i+1)+'. '+esc(p.name)+'</b> — '+p.s+' pts</summary>'+answerList(p.id)+'</details>').join('')||'<p class="mute">No players.</p>')+'</div>';
+}
+function csv(){
+  const head=['Player','Total'];Q.forEach((q,i)=>head.push('Q'+(i+1)+' answer','Q'+(i+1)+' correct?'));
+  const rows=[head].concat(Object.keys(P).map(id=>{const a=A[id]||{},r=[P[id].name,SC[id]||0];
+    Q.forEach((q,i)=>{const x=a['q'+i];r.push(x?q.o[x.c]:'',x?(x.c===K[i]?'Yes':'No'):'No answer')});return r}));
+  const text=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const l=document.createElement('a');l.href=URL.createObjectURL(new Blob(['\ufeff'+text],{type:'text/csv'}));l.download='quiz-results.csv';l.click();
 }
 function render(){
   if(!pin||!S)return;
@@ -130,7 +148,7 @@ function render(){
       const n=cnt(S.idx,j),pct=np?Math.round(100*n/np):0;
       return '<div style="margin:10px 0;'+(j===S.correct?'':'opacity:.6')+'"><div class="row" style="justify-content:space-between"><span>'+(j===S.correct?'✅ ':'')+COL[j]+' '+esc(x)+'</span><b>'+n+'</b></div><div class="bar"><i style="width:'+pct+'%;background:var(--'+'abcd'[j]+')"></i></div></div>';
     }).join('')+'</div><div class="card"><h2>Top players</h2>'+lb(5)+'</div>';
-  }else if(S.phase==='final')h+='<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(10)+'</div>';
+  }else if(S.phase==='final')h+=finalHtml();
   app.innerHTML=h;
 }
 setInterval(()=>{const el=document.getElementById('tm');if(el&&S&&S.phase==='question')el.textContent='⏱ '+Math.max(0,Math.ceil((LIMIT-(Date.now()-S.startedAt))/1000))+'s'},500);
