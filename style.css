@@ -1,0 +1,30 @@
+:root{--bg:#f6f5ff;--card:#fff;--ink:#1d1b2e;--mute:#6b6880;--line:#e3e0f5;--brand:#5b45e6;--a:#e5484d;--b:#2f6fed;--c:#e8a317;--d:#2da44e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#15131f;--card:#201d2e;--ink:#f1effc;--mute:#a19db8;--line:#33304a;--brand:#8d7bff;color-scheme:dark}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:20px;margin:0 0 12px}
+.mute{color:var(--mute);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0}
+input[type=text],input[type=tel]{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;margin:4px 0}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:12px 16px;background:var(--brand);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+button.full{width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.opt{min-height:84px;font-size:17px;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;padding:10px}
+.o0{background:var(--a)}.o1{background:var(--b)}.o2{background:var(--c)}.o3{background:var(--d)}
+.opt.dim{opacity:.35}.opt.pick{outline:4px solid var(--ink)}
+.bar{height:10px;background:var(--line);border-radius:9px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%}
+.lb{list-style:none;padding:0;margin:0}
+.lb li{display:flex;justify-content:space-between;padding:10px 12px;border-radius:10px;margin:6px 0;background:var(--bg)}
+.lb li.me{outline:2px solid var(--brand)}
+.big{font-size:44px;font-weight:800;text-align:center;margin:8px 0}
+.pin{font-size:56px;font-weight:800;letter-spacing:6px;text-align:center;color:var(--brand)}
+.qedit{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.qedit label{display:flex;gap:8px;align-items:center}
+.qedit label input[type=radio]{flex:none}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:13px;color:var(--mute)}
+#qr{display:flex;justify-content:center;margin:12px 0}#qr img,#qr canvas{background:#fff;padding:8px;border-radius:8px}

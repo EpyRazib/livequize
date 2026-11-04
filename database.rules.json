@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "games": {
+      "$pin": {
+        "meta": {
+          ".read": true,
+          ".write": "auth != null && (!data.exists() || data.child('hostUid').val() === auth.uid)",
+          "hostUid": { ".validate": "newData.val() === auth.uid" }
+        },
+        "questions": {
+          ".read": true,
+          ".write": "auth != null && newData.parent().child('meta/hostUid').val() === auth.uid"
+        },
+        "key": {
+          ".read": "auth != null && root.child('games/' + $pin + '/meta/hostUid').val() === auth.uid",
+          ".write": "auth != null && newData.parent().child('meta/hostUid').val() === auth.uid"
+        },
+        "state": {
+          ".read": true,
+          ".write": "auth != null && newData.parent().child('meta/hostUid').val() === auth.uid"
+        },
+        "scores": {
+          ".read": true,
+          ".write": "auth != null && newData.parent().child('meta/hostUid').val() === auth.uid"
+        },
+        "players": {
+          ".read": true,
+          "$uid": { ".write": "auth != null && (auth.uid === $uid || root.child('games/' + $pin + '/meta/hostUid').val() === auth.uid)" }
+        },
+        "answers": {
+          ".read": true,
+          "$uid": { ".write": "auth != null && (auth.uid === $uid || root.child('games/' + $pin + '/meta/hostUid').val() === auth.uid)" }
+        }
+      }
+    }
+  }
+}
