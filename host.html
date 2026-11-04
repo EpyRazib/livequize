@@ -10,6 +10,9 @@
 <script src="firebase-config.js"></script>
 <script>
 const app=document.getElementById('app'),LIMIT=20000,COL=['▲','◆','●','■'];
+window.addEventListener('error',e=>{document.getElementById('app').innerHTML='<div class="card"><b>Error:</b> '+String(e.message).replace(/</g,'&lt;')+'<br><span class="mute">Check firebase-config.js is uploaded and filled in (apiKey, databaseURL, projectId, appId).</span></div>'});
+window.addEventListener('unhandledrejection',e=>{document.getElementById('app').innerHTML='<div class="card"><b>Error:</b> '+String(e.reason&&e.reason.message||e.reason).replace(/</g,'&lt;')+'</div>'});
+if(typeof firebaseConfig==='undefined'||/PASTE_/.test(JSON.stringify(firebaseConfig)))throw new Error('firebase-config.js is missing or still contains PASTE_ placeholders.');
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
