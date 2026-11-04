@@ -74,7 +74,12 @@ function render(){
     h='<div class="card"><h2>'+esc(q.q)+'</h2><p>Correct answer: <b>✅ '+COL[S.correct]+' '+esc(q.o[S.correct])+'</b></p><div class="big">'
      +(mine?(mine.c===S.correct?'🎉 Correct!':'😅 Not quite'):'⏱ No answer')+'</div><p class="mute" style="text-align:center">Your total: <b>'+(SC[uid]||0)+'</b></p></div>'
      +'<div class="card"><h2>Top players</h2>'+lb(5)+'</div>';
-  }else if(S.phase==='final')h='<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(10)+'</div>';
+  }else if(S.phase==='final'){
+    const K=S.key||[];
+    h='<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(100)+'</div><div class="card"><h2>Your answers</h2><p class="mute">Total: <b>'+(SC[uid]||0)+'</b></p>'
+     +Q.map((qq,i)=>{const x=A['q'+i],ok=x&&x.c===K[i];
+       return '<div style="margin:8px 0"><b>Q'+(i+1)+'.</b> '+esc(qq.q)+'<br>'+(x?(ok?'✅ ':'❌ ')+esc(qq.o[x.c])+(ok?'':' <span class="mute">· correct: '+esc(qq.o[K[i]])+'</span>'):'⏱ no answer <span class="mute">· correct: '+esc(qq.o[K[i]])+'</span>')+'</div>'}).join('')+'</div>';
+  }
   app.innerHTML=h;
 }
 setInterval(()=>{const el=document.getElementById('tm');if(el&&S&&S.phase==='question')el.textContent='⏱ '+Math.max(0,Math.ceil((LIMIT-(Date.now()-S.startedAt))/1000))+'s'},500);
