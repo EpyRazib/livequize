@@ -38,7 +38,7 @@ async function resume(){
 }
 /* ---------- editor ---------- */
 function editor(){
-  let h='<div class="card"><h2>Create your quiz</h2><input type="text" placeholder="Quiz title" value="'+esc(draft.title)+'" oninput="draft.title=this.value;saveDraft()">';
+  let h='<details class="card"><summary><b>📥 Import questions (paste text or choose a .txt file)</b></summary><p class="mute">Format: optional first line <code># Title</code>. Then each question as a block separated by a blank line: question line, then 2–4 option lines. Put <code>*</code> before the correct option.</p><textarea id="imp" rows="8" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit" placeholder="# My Quiz&#10;&#10;Capital of Bangladesh?&#10;Sylhet&#10;*Dhaka&#10;Khulna"></textarea><div class="row" style="margin-top:8px"><input type="file" id="impf" accept=".txt,text/plain" onchange="impFile(this)"><button onclick="importText()">Import</button></div></details><div class="card"><h2>Create your quiz</h2><input type="text" placeholder="Quiz title" value="'+esc(draft.title)+'" oninput="draft.title=this.value;saveDraft()">';
   draft.qs.forEach((d,i)=>{
     h+='<div class="qedit"><div class="row" style="justify-content:space-between"><b>Question '+(i+1)+'</b><button class="ghost" onclick="delQ('+i+')">Remove</button></div>'
      +'<input type="text" placeholder="Question" value="'+esc(d.q)+'" oninput="draft.qs['+i+'].q=this.value;saveDraft()">';
@@ -47,6 +47,30 @@ function editor(){
   });
   h+='<div class="row" style="margin-top:14px"><button class="ghost" onclick="addQ()">+ Add question</button><button onclick="create()">Create game →</button></div></div>';
   app.innerHTML=h;
+}
+function parseQuiz(t){
+  t=t.replace(/\r/g,'');
+  let title=null;const m=t.match(/^\s*#\s*(.+)$/m);
+  if(m){title=m[1].trim();t=t.replace(m[0],'')}
+  const qs=[];let unmarked=0;
+  t.split(/\n\s*\n/).map(b=>b.split('\n').map(l=>l.trim()).filter(Boolean)).filter(b=>b.length>=3).forEach(b=>{
+    const o=[];let c=-1;
+    b.slice(1,5).forEach((l,j)=>{if(l[0]==='*'){c=j;l=l.slice(1).trim()}o.push(l)});
+    if(c<0){c=0;unmarked++}
+    while(o.length<4)o.push('');
+    qs.push({q:b[0],o:o,c:c});
+  });
+  return {title:title,qs:qs,unmarked:unmarked};
+}
+function importText(){
+  const r=parseQuiz(document.getElementById('imp').value);
+  if(!r.qs.length){alert('No questions found. Each question needs a line, then 2-4 option lines, separated by a blank line.');return}
+  draft.qs=r.qs;if(r.title)draft.title=r.title;saveDraft();editor();
+  if(r.unmarked)alert(r.unmarked+' question(s) had no * marker, so option 1 was set as correct. Please check them.');
+}
+function impFile(inp){
+  const f=inp.files[0];if(!f)return;
+  const rd=new FileReader();rd.onload=()=>{document.getElementById('imp').value=rd.result};rd.readAsText(f,'UTF-8');
 }
 function addQ(){draft.qs.push({q:'',o:['','','',''],c:0});saveDraft();editor()}
 function delQ(i){if(draft.qs.length>1){draft.qs.splice(i,1);saveDraft();editor()}}
