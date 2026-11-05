@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Join Live Quiz</title><link rel="stylesheet" href="style.css">
+</head><body><main><h1>🎯 Live Quiz</h1><div id="app" class="mute">Loading…</div></main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+const app=document.getElementById('app'),LIMIT=20000,COL=['▲','◆','●','■'];
+window.addEventListener('error',e=>{document.getElementById('app').innerHTML='<div class="card"><b>Error:</b> '+String(e.message).replace(/</g,'&lt;')+'<br><span class="mute">Check firebase-config.js is uploaded and filled in (apiKey, databaseURL, projectId, appId).</span></div>'});
+window.addEventListener('unhandledrejection',e=>{document.getElementById('app').innerHTML='<div class="card"><b>Error:</b> '+String(e.reason&&e.reason.message||e.reason).replace(/</g,'&lt;')+'</div>'});
+if(typeof firebaseConfig==='undefined'||/PASTE_/.test(JSON.stringify(firebaseConfig)))throw new Error('firebase-config.js is missing or still contains PASTE_ placeholders.');
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+let uid,pin,S=null,Q=[],P={},SC={},A={},joined=false;
+const ref=p=>db.ref('games/'+pin+'/'+p);
+
+firebase.auth().signInAnonymously().then(u=>{uid=u.user.uid;start()})
+  .catch(e=>app.innerHTML='<div class="card">Sign-in failed: '+esc(e.message)+'<br>Check firebase-config.js and that Anonymous sign-in is enabled.</div>');
+
+function start(){
+  const urlPin=new URLSearchParams(location.search).get('pin');
+  let saved=null;try{saved=JSON.parse(localStorage.getItem('quizPlayer'))}catch(e){}
+  if(saved&&(!urlPin||urlPin===saved.pin)){join(saved.pin,saved.name,true)}else joinForm(urlPin||'');
+}
+function joinForm(p,msg){
+  app.innerHTML='<div class="card"><h2>Join a quiz</h2>'+(msg?'<p style="color:var(--a)">'+esc(msg)+'</p>':'')
+   +'<input id="pin" type="tel" inputmode="numeric" maxlength="6" placeholder="Game PIN" value="'+esc(p)+'">'
+   +'<input id="nm" type="text" maxlength="24" placeholder="Your nickname"><button class="full" style="margin-top:8px" onclick="go()">Join</button></div>';
+}
+function go(){join(document.getElementById('pin').value.trim(),document.getElementById('nm').value.trim())}
+async function join(p,n,auto){
+  if(!/^\d{6}$/.test(p)||!n){joinForm(p,'Enter the 6-digit PIN and a nickname.');return}
+  try{
+    pin=p;
+    const m=await ref('meta').once('value');
+    if(!m.exists()){localStorage.removeItem('quizPlayer');joinForm(p,'No game found with that PIN.');return}
+    await ref('players/'+uid).set({name:n.slice(0,24)});
+    localStorage.setItem('quizPlayer',JSON.stringify({pin:p,name:n}));
+    listen();
+  }catch(e){joinForm(p,'Could not join: '+e.message)}
+}
+function listen(){
+  joined=true;
+  ref('state').on('value',s=>{S=s.val();render()});
+  ref('questions').on('value',s=>{Q=s.val()||[];render()});
+  ref('players').on('value',s=>{P=s.val()||{};render()});
+  ref('scores').on('value',s=>{SC=s.val()||{};render()});
+  ref('answers/'+uid).on('value',s=>{A=s.val()||{};render()});
+}
+function pick(j){
+  if(!S||S.phase!=='question'||A['q'+S.idx])return;
+  const a={c:j,t:Math.max(0,Date.now()-S.startedAt)};
+  A['q'+S.idx]=a;render();
+  ref('answers/'+uid+'/q'+S.idx).set(a);
+}
+function lb(n){
+  const r=Object.keys(P).map(id=>({id,name:P[id].name,s:SC[id]||0})).sort((a,b)=>b.s-a.s).slice(0,n);
+  return '<ol class="lb">'+r.map((p,i)=>'<li class="'+(p.id===uid?'me':'')+'"><span>'+(i+1)+'. '+esc(p.name)+'</span><b>'+p.s+'</b></li>').join('')+'</ol>';
+}
+function render(){
+  if(!joined)return;
+  if(!S){app.innerHTML='<div class="card"><h2>Waiting for the host…</h2></div>';return}
+  const q=Q[S.idx],mine=A['q'+S.idx];let h='';
+  if(S.phase==='lobby')h='<div class="card"><h2>You’re in! 🎉</h2><p class="mute">Game '+esc(pin)+' · '+Object.keys(P).length+' players. Waiting for the host to start…</p></div>';
+  else if(S.phase==='question'&&q){
+    h='<div class="card"><span class="pill">Question '+(S.idx+1)+' / '+Q.length+'</span> <span class="pill" id="tm"></span><h2 style="margin-top:10px">'+esc(q.q)+'</h2><div class="opts">'
+     +q.o.map((x,j)=>'<button class="opt o'+j+(mine?(mine.c===j?' pick':' dim'):'')+'" '+(mine?'disabled':'')+' onclick="pick('+j+')">'+COL[j]+' '+esc(x)+'</button>').join('')+'</div>'
+     +(mine?'<p class="mute" style="text-align:center">Answer locked in. Waiting for the others…</p>':'')+'</div>';
+  }else if(S.phase==='results'&&q){
+    h='<div class="card"><h2>'+esc(q.q)+'</h2><p>Correct answer: <b>✅ '+COL[S.correct]+' '+esc(q.o[S.correct])+'</b></p><div class="big">'
+     +(mine?(mine.c===S.correct?'🎉 Correct!':'😅 Not quite'):'⏱ No answer')+'</div><p class="mute" style="text-align:center">Your total: <b>'+(SC[uid]||0)+'</b></p></div>'
+     +'<div class="card"><h2>Top players</h2>'+lb(5)+'</div>';
+  }else if(S.phase==='final'){
+    const K=S.key||[];
+    h='<div class="card"><h2>🏆 Final leaderboard</h2>'+lb(100)+'</div><div class="card"><h2>Your answers</h2><p class="mute">Total: <b>'+(SC[uid]||0)+'</b></p>'
+     +Q.map((qq,i)=>{const x=A['q'+i],ok=x&&x.c===K[i];
+       return '<div style="margin:8px 0"><b>Q'+(i+1)+'.</b> '+esc(qq.q)+'<br>'+(x?(ok?'✅ ':'❌ ')+esc(qq.o[x.c])+(ok?'':' <span class="mute">· correct: '+esc(qq.o[K[i]])+'</span>'):'⏱ no answer <span class="mute">· correct: '+esc(qq.o[K[i]])+'</span>')+'</div>'}).join('')+'</div>';
+  }
+  app.innerHTML=h;
+}
+setInterval(()=>{const el=document.getElementById('tm');if(el&&S&&S.phase==='question')el.textContent='⏱ '+Math.max(0,Math.ceil((LIMIT-(Date.now()-S.startedAt))/1000))+'s'},500);
+</script></body></html>
